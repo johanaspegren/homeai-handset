@@ -66,7 +66,10 @@ Milestones 1, 3, 4 and 6 of the spec, with 5 stood in for:
   pass before its first visible token, worth ~2 s. The handset turns it off
   (`HOMEAI_NO_THINK_SOURCES`); tool markers still fire correctly without it.
 - **Loopback mode** — `/zodiac/echo` proves audio transport with no AI in the
-  path at all.
+  path at all. Verified on the real Zodiac: speaking into the original
+  mouthpiece comes back out of the original earpiece, so the microphone, the
+  USB card, the WebSocket and the playback path are all known good
+  independently of Whisper, Kiri and Piper.
 - **Hook stand-in** — the cradle switch isn't wired yet, so the client's hook
   is an interface with three implementations (`gpio`, `stdin`, `always`). Only
   `hook.source` in config.yaml changes when the real switch arrives.
