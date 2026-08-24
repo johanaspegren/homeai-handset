@@ -16,6 +16,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from . import config, handsfree, protocol, stt, tts
+from .ring import ring
 from .echo import router as echo_router
 from .logging_config import setup as setup_logging
 from .session import Call
@@ -30,12 +31,21 @@ async def lifespan(app: FastAPI):
     # multi-second model load.
     await asyncio.to_thread(stt.load)
     await asyncio.to_thread(tts.load)
+    # Take the status ring unless hands free is on, in which case homeai-voice
+    # owns it and has more to show.
+    if not handsfree.voice_running():
+        await asyncio.to_thread(ring.acquire)
     log.info(
         "handset service ready | chat=%s | voice=%s @ %d Hz",
         config.HOMEAI_CHAT_URL, config.PIPER_VOICE, tts.sample_rate(),
         extra={"stage": "BOOT", "terminal": "-"},
     )
-    yield
+    try:
+        yield
+    finally:
+        # The Arduino holds its last frame forever — never leave a frozen
+        # animation behind pretending to be a state.
+        ring.release()
 
 
 app = FastAPI(title="HomeAI Handset Service", lifespan=lifespan)

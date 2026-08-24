@@ -55,6 +55,18 @@ HANDSFREE_KEY = os.getenv("HANDSET_HANDSFREE_KEY", "*").strip()
 # Starting homeai-voice loads Whisper onto the GPU — allow for it.
 HANDSFREE_TIMEOUT_S = float(os.getenv("HANDSET_HANDSFREE_TIMEOUT_S", "45"))
 
+# --- the status ring (homeai-halo) -----------------------------------------
+# Voice used to drive Kiri's LED ring; it doesn't run by default now, so the
+# handset owns it — and hands it back while hands free is on.
+HALO_ENABLED = os.getenv("HALO_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+HALO_PORT = os.getenv("HALO_PORT", "/dev/ttyUSB0")
+HALO_DIR = Path(
+    os.getenv("HALO_DIR", str(REPO_DIR.parent / "homeai-halo"))
+).expanduser()
+# What the ring shows when nothing is happening: 'resting' is the slow breathe
+# (needs the firmware from 2026-08-24 or later); 'idle' is the gliding dot.
+HALO_RESTING_STATE = os.getenv("HALO_RESTING_STATE", "resting")
+
 # --- speech to text --------------------------------------------------------
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small.en")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")

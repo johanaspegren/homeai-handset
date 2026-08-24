@@ -21,6 +21,7 @@ import logging
 import os
 
 from . import config
+from .ring import ring
 
 log = logging.getLogger("handset")
 
@@ -71,8 +72,18 @@ async def set_hands_free(on: bool) -> bool:
     """Switch the workshop mic and speakers on or off. Returns the state after."""
     if on == voice_running():
         return on
+    if on:
+        # homeai-voice drives the same LED ring, over the same serial port, and
+        # has a live mic VU to show on it. Let go before it starts.
+        ring.release()
     await _homeai_sh("start" if on else "stop", "voice")
-    return voice_running()
+    running = voice_running()
+    if not running:
+        # Either we just stopped it, or it failed to start — the ring is ours
+        # again either way, and would otherwise sit frozen on voice's last frame.
+        ring.acquire()
+        ring.rest()
+    return running
 
 
 async def toggle() -> bool:

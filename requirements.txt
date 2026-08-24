@@ -19,6 +19,10 @@ piper-tts
 openwakeword
 numpy
 
+# Serial link to Kiri's status ring (homeai-halo). Optional at runtime —
+# ring.py degrades to a no-op if it's missing or the ring is unplugged.
+pyserial
+
 # CUDA runtime libs for GPU speech-to-text (see WHISPER_DEVICE in .env.example).
 # Harmless on CPU-only machines — _cudalibs.py only loads them if present.
 nvidia-cublas-cu12

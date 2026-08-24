@@ -15,6 +15,7 @@ import logging
 
 from . import config, handsfree, llm, protocol, stt, tts
 from .logging_config import CallLog
+from .ring import ring
 from .vad import Segmenter, Vad
 from .voice_control import set_voice_muted
 
@@ -68,6 +69,7 @@ class Call:
         # greeting rather than alongside it.
         if await self._mute_voice(True):
             self.log.event("VOICE", "workshop mic held for the call")
+        ring.set("listening")
         rate = self._sample_rate()
         await self._send_json(protocol.message(
             protocol.CALL_STARTED,
@@ -101,6 +103,7 @@ class Call:
         self._segmenter.reset()
         if await self._mute_voice(False):
             self.log.event("VOICE", "workshop mic released")
+        ring.rest()
         self.log.event("CALL", "ended")
 
     async def _cancel_turn(self) -> None:
@@ -180,6 +183,7 @@ class Call:
     async def _run_turn(self, pcm: bytes) -> None:
         try:
             await self._led(protocol.LED_THINKING)
+            ring.set("thinking")
             text = await asyncio.to_thread(self._transcribe, pcm)
             self.log.timed("STT", f'transcript | "{text or "[nothing]"}"')
             if not text:
@@ -231,6 +235,7 @@ class Call:
         if first:
             await self._send_json(protocol.message(protocol.ASSISTANT_SPEAKING))
             await self._led(protocol.LED_SPEAKING)
+            ring.set("speaking")
         for i in range(0, len(audio), AUDIO_FRAME_BYTES):
             await self._send_audio(audio[i : i + AUDIO_FRAME_BYTES])
         if first:
@@ -247,6 +252,7 @@ class Call:
         # earpiece bleeding into the mouthpiece can't become the next question.
         self._segmenter.reset()
         self._accepting = True
+        ring.set("listening")
         await self._led(protocol.LED_LISTENING)
         await self._send_json(protocol.message(protocol.MIC, active=True))
         await self._send_json(protocol.message(protocol.LISTENING))
