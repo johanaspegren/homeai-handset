@@ -13,9 +13,10 @@ a socket, and the STT/LLM/TTS callables are injected so tests don't need models.
 import asyncio
 import logging
 
-from . import config, llm, protocol, stt, tts
+from . import config, handsfree, llm, protocol, stt, tts
 from .logging_config import CallLog
 from .vad import Segmenter, Vad
+from .voice_control import set_voice_muted
 
 # PCM slice size for outbound audio frames (~93 ms at 22050 Hz mono) — small
 # enough that the earpiece starts within a frame of synthesis finishing.
@@ -35,6 +36,7 @@ class Call:
         sample_rate=None,
         segmenter=None,
         greeting: str = None,
+        mute_voice=None,
     ) -> None:
         self._send_json = send_json
         self._send_audio = send_audio
@@ -46,6 +48,7 @@ class Call:
         self._synthesize = synthesize or tts.synthesize
         self._sample_rate = sample_rate or tts.sample_rate
         self._greeting = config.GREETING if greeting is None else greeting
+        self._mute_voice = mute_voice or set_voice_muted
 
         self._segmenter = segmenter or Segmenter(Vad(), on_speech_start=self._speech_started)
         self._turn: asyncio.Task | None = None
@@ -59,6 +62,12 @@ class Call:
         """Handset lifted: answer immediately."""
         self.active = True
         self.log.event("CALL", "started")
+        # Hold the workshop's open mic first: it hears the earpiece too, and
+        # would answer the same question a second time. homeai-voice picks the
+        # command up on its next heartbeat (up to ~2s), so it's sent before the
+        # greeting rather than alongside it.
+        if await self._mute_voice(True):
+            self.log.event("VOICE", "workshop mic held for the call")
         rate = self._sample_rate()
         await self._send_json(protocol.message(
             protocol.CALL_STARTED,
@@ -90,6 +99,8 @@ class Call:
         self._accepting = False
         await self._cancel_turn()
         self._segmenter.reset()
+        if await self._mute_voice(False):
+            self.log.event("VOICE", "workshop mic released")
         self.log.event("CALL", "ended")
 
     async def _cancel_turn(self) -> None:
@@ -123,11 +134,32 @@ class Call:
             self._segmenter.reset()
             self.log.event("MUTE", "on" if self._muted else "off")
         elif kind == protocol.KEY:
-            # Keypad isn't mapped yet (see tools/keypad_mapper.py); log it so
-            # wiring can be verified end to end before anything depends on it.
-            self.log.event("KEY", str(message.get("key")))
+            key = str(message.get("key"))
+            self.log.event("KEY", key)
+            if config.HANDSFREE_KEY and key == config.HANDSFREE_KEY:
+                await self._toggle_hands_free()
         elif kind == protocol.PING:
             await self._send_json(protocol.message(protocol.PONG))
+
+    async def _toggle_hands_free(self) -> None:
+        """The phone's hands-free button: bring the workshop mic and speakers
+        up (or put them away). Slow — homeai-voice loads Whisper — so say so
+        rather than leaving a silent handset."""
+        going_on = not handsfree.voice_running()
+        self._accepting = False
+        try:
+            await self._speak_text(
+                "Switching to hands free, one moment." if going_on
+                else "Back to the handset.")
+            on = await handsfree.toggle()
+            self.log.event("HANDS", f"hands free {'on' if on else 'off'}")
+            if going_on and not on:
+                await self._speak_text("Sorry, the workshop microphone didn't come up.")
+        except Exception:
+            logging.exception("hands-free toggle failed")
+        finally:
+            if self.active:
+                await self._listen()
 
     def _speech_started(self) -> None:
         self.log.mark("speech_start")

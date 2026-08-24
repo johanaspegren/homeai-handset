@@ -34,10 +34,16 @@ class FakeTransport:
 
 
 def make_call(transport, *, script=None, reply="Sunny tomorrow.", transcript="hello",
-              greeting="Hello.", chat=None, synthesize=None):
+              greeting="Hello.", chat=None, synthesize=None, mute_log=None):
     async def fake_chat(text, **kwargs):
         for token in reply.split(" "):
             yield token + " "
+
+    async def fake_mute(muted):
+        # Never let a test reach the real homeai-voice and silence the workshop.
+        if mute_log is not None:
+            mute_log.append(muted)
+        return True
 
     segmenter = Segmenter(ScriptedVad(script or []))
     return Call(
@@ -50,6 +56,7 @@ def make_call(transport, *, script=None, reply="Sunny tomorrow.", transcript="he
         sample_rate=lambda: 22050,
         segmenter=segmenter,
         greeting=greeting,
+        mute_voice=fake_mute,
     )
 
 
@@ -171,6 +178,55 @@ class CallTests(unittest.IsolatedAsyncioTestCase):
         await call._turn
         self.assertNotIn(protocol.ASSISTANT_SPEAKING, transport.types())
         self.assertEqual(transport.types()[-1], protocol.LISTENING)
+
+    async def test_the_workshop_mic_is_held_for_the_call(self):
+        """Kiri listens in two places. Without this she answers twice — once in
+        the earpiece and once out loud across the workshop."""
+        mute_log = []
+        transport = FakeTransport()
+        call = make_call(transport, mute_log=mute_log, greeting="")
+        await call.start()
+        self.assertEqual(mute_log, [True], "mic should be held as the handset lifts")
+        await call.hang_up()
+        self.assertEqual(mute_log, [True, False], "and released when it goes down")
+
+    async def test_the_mic_is_held_before_the_greeting_plays(self):
+        # The workshop mic would otherwise hear the greeting itself.
+        order = []
+        transport = FakeTransport()
+
+        async def note_mute(muted):
+            order.append("mute" if muted else "unmute")
+            return True
+
+        async def note_audio(data):
+            order.append("audio")
+
+        call = Call(
+            transport.send_json,
+            note_audio,
+            transcribe=lambda pcm: "",
+            chat=None,
+            synthesize=lambda text: b"\x00\x01" * 10,
+            sample_rate=lambda: 22050,
+            segmenter=Segmenter(ScriptedVad([])),
+            greeting="Hello.",
+            mute_voice=note_mute,
+        )
+        await call.start()
+        await call._turn
+        self.assertEqual(order[0], "mute")
+        self.assertIn("audio", order)
+
+    async def test_a_dead_voice_service_does_not_break_the_call(self):
+        async def failing_mute(muted):
+            return False  # voice_control swallowed an error and told us so
+
+        transport = FakeTransport()
+        call = make_call(transport, greeting="")
+        call._mute_voice = failing_mute
+        await call.start()
+        self.assertTrue(call.active, "a nuisance, not a reason to drop the call")
 
     async def test_a_failing_brain_is_reported_not_swallowed(self):
         async def broken_chat(text, **kwargs):

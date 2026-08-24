@@ -137,12 +137,70 @@ installed on the Pi, not here.
 | `HOMEAI_CHAT_URL` | `http://localhost:8000/chat` | the brain |
 | `HANDSET_USER` | `johan` | whose conversation history this is |
 | `HANDSET_GREETING` | `HomeAI. Hello Johan.` | spoken the instant you pick up |
+| `HANDSET_MUTES_VOICE` | `1` | hold the workshop's open mic for the call, when it's running at all |
+| `HANDSET_HANDSFREE_KEY` | `*` | keypad button that toggles the workshop mic (keypad not mapped yet) |
+| `HOMEAI_SH` | `../homeai.sh` | the stack script hands-free uses to start/stop voice |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` | `small.en` / `cuda` | speech to text |
 | `PIPER_VOICE` | `en_US-lessac-medium` | Kiri's voice (shared with homeai-voice) |
 | `HOMEAI_VOICE_DIR` | `../homeai-voice` | where the voice files and helpers live |
 | `VAD_HANGOVER_MS` | `700` | silence that ends your turn — the main latency/patience dial |
 | `VAD_PREROLL_MS` | `300` | audio kept from before you started speaking |
 | `VAD_MIN_SPEECH_MS` | `250` | shorter than this is a door bang, not a turn |
+
+## The telephone is the default way in
+
+`homeai-voice` no longer starts with the stack. The phone is how you talk to
+Kiri; the workshop's open mic is the thing you switch on when you want it.
+
+That isn't only about her answering twice (though she did — the room mic hears
+the earpiece perfectly well and cheerfully answers the same question again).
+**Muting doesn't save any work.** A muted homeai-voice still runs VAD on every
+80 ms frame and still puts every utterance in the room through Whisper; mute
+only stops her *replying*. Not running it is what gives the GPU back — about a
+gigabyte of VRAM, plus the transcription of conversations nobody is having.
+
+So the default is: handset only, room silent, nothing listening to an empty
+workshop.
+
+### Hands free
+
+Switching it on brings up the workshop mic and speakers so you can talk to the
+room instead of holding the handset:
+
+```bash
+curl -X POST localhost:8400/handsfree -H 'content-type: application/json' -d '{"on": true}'
+curl localhost:8400/handsfree      # {"on": true}
+```
+
+This is what the phone's hands-free button will call. The Zodiac's keypad isn't
+mapped yet, so nothing is wired to it — but the handler is: any `key` message
+matching `HANDSET_HANDSFREE_KEY` (default `*`) toggles it, and Kiri says
+"Switching to hands free, one moment" while homeai-voice loads Whisper. It
+takes several seconds, so it's a mode you switch, not a key you hold.
+
+Or from the shell, which is all the endpoint does anyway:
+
+```bash
+~/dev/homeai.sh start voice     # room listening
+~/dev/homeai.sh stop voice      # back to the handset alone
+```
+
+While hands free is on, picking up the handset still holds the room mic for the
+length of the call (`HANDSET_MUTES_VOICE=1`, the same button the dashboard has)
+and releases it on hang-up — so the two never answer at once. When hands free is
+off, no mute is sent at all: it would sit queued on the server and homeai-voice
+would come up already muted.
+
+**What you give up with the room mic off:** spoken reminders and the arrival
+greeting have no mouth to come out of — they queue on the server until voice is
+running again — and there's no spoken boot report to tell you the stack came up
+clean. Lifting the handset and hearing her answer does the same job.
+
+To go back to always-on at boot, set in `~/dev/homeai.env`:
+
+```bash
+HOMEAI_START_SERVICES="presence mower-ui server discord-bot handset voice"
+```
 
 ## Protocol
 

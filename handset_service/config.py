@@ -26,6 +26,35 @@ HANDSET_USER = os.getenv("HANDSET_USER", "johan")
 HANDSET_SOURCE = os.getenv("HANDSET_SOURCE", "handset")
 CHAT_TIMEOUT_S = float(os.getenv("HANDSET_CHAT_TIMEOUT_S", "60"))
 
+# --- the other Kiri --------------------------------------------------------
+# The workshop's always-on mic hears the telephone conversation too, and
+# answers it — two of her at once. On by default: the handset holds the
+# workshop mic for the length of the call. Turn it off (0) to keep both
+# listening, which makes the pair a hands-free setup instead.
+MUTE_VOICE_DURING_CALL = os.getenv("HANDSET_MUTES_VOICE", "1").strip().lower() not in (
+    "0", "false", "no", "off",
+)
+# Same endpoint the dashboard's mute button uses; derived from the chat URL so
+# there's only one address to configure.
+VOICE_MUTE_URL = os.getenv(
+    "HANDSET_VOICE_MUTE_URL", HOMEAI_CHAT_URL.replace("/chat", "/voice/mute"),
+)
+
+# --- hands free ------------------------------------------------------------
+# The telephone is the default input, so homeai-voice isn't started with the
+# stack: a muted voice service still VADs every frame and Whispers every
+# utterance in the room, which is GPU spent on a conversation nobody is having.
+# Hands free starts it on demand — the workshop mic and speakers, when wanted.
+HOMEAI_SH = Path(os.getenv("HOMEAI_SH", str(REPO_DIR.parent / "homeai.sh"))).expanduser()
+VOICE_PIDFILE = Path(
+    os.getenv("HOMEAI_VOICE_PIDFILE", str(REPO_DIR.parent / "logs" / "voice.pid"))
+).expanduser()
+# Which keypad button toggles it. The Zodiac's keypad isn't mapped yet (see
+# tools/keypad_mapper.py), so until it is, use POST /handsfree.
+HANDSFREE_KEY = os.getenv("HANDSET_HANDSFREE_KEY", "*").strip()
+# Starting homeai-voice loads Whisper onto the GPU — allow for it.
+HANDSFREE_TIMEOUT_S = float(os.getenv("HANDSET_HANDSFREE_TIMEOUT_S", "45"))
+
 # --- speech to text --------------------------------------------------------
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small.en")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cuda")

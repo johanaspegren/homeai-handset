@@ -13,8 +13,9 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
-from . import config, protocol, stt, tts
+from . import config, handsfree, protocol, stt, tts
 from .echo import router as echo_router
 from .logging_config import setup as setup_logging
 from .session import Call
@@ -48,7 +49,30 @@ async def health() -> dict:
         "chat_url": config.HOMEAI_CHAT_URL,
         "whisper": config.WHISPER_MODEL,
         "voice": config.PIPER_VOICE,
+        "hands_free": handsfree.voice_running(),
     }
+
+
+class HandsFree(BaseModel):
+    on: bool
+
+
+@app.get("/handsfree")
+async def hands_free_state() -> dict:
+    """Is the workshop mic and speaker pair running?"""
+    return {"on": handsfree.voice_running()}
+
+
+@app.post("/handsfree")
+async def hands_free_set(cmd: HandsFree) -> dict:
+    """Switch the workshop mic and speakers on or off.
+
+    This is what the phone's hands-free button will call once the Zodiac's
+    keypad is mapped; until then it's reachable by hand:
+
+        curl -X POST localhost:8400/handsfree -d '{"on": true}' -H 'content-type: application/json'
+    """
+    return {"on": await handsfree.set_hands_free(cmd.on)}
 
 
 class _Transport:
