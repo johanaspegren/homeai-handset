@@ -16,12 +16,17 @@ Development hardware: Pi 4/5 at `192.168.68.153`, wired LAN.
 
 ```bash
 sudo apt install alsa-utils python3-venv
-git clone <this repo> ~/zodiac-client   # or copy the zodiac-client/ directory
-cd ~/zodiac-client
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install gpiozero          # only once the hook switch is wired
+git clone <this repo> ~/homeai-handset   # or copy just the zodiac-client/ directory
+cd ~/homeai-handset/zodiac-client
+./install.sh                             # WITH_GPIO=1 ./install.sh once the switch is wired
 ```
+
+> **Install from *this* directory's `requirements.txt`, not the repo root's.**
+> The root one is the homeai box's — faster-whisper, onnxruntime and two NVIDIA
+> CUDA wheels, gigabytes that do nothing on a Pi and that nothing here imports.
+> The client needs `websockets` and `PyYAML`. `install.sh` gets this right for
+> you; if you already did it the other way, `rm -rf .venv`, run `install.sh`,
+> and `pip cache purge` to reclaim the downloads.
 
 Find the USB sound card's real ALSA name and put it in `config.yaml` — never a
 bare card index, they renumber:

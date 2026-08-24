@@ -1,3 +1,9 @@
+# ⚠ THESE ARE THE *SERVER* DEPENDENCIES — for the homeai box, not the Pi.
+# They pull in onnxruntime, faster-whisper and two NVIDIA CUDA wheels: a couple
+# of gigabytes that do nothing on a Raspberry Pi, and nothing the client
+# imports. On the Pi, install zodiac-client/requirements.txt instead — two pure
+# Python packages — or just run zodiac-client/install.sh.
+
 fastapi
 uvicorn[standard]
 websockets
