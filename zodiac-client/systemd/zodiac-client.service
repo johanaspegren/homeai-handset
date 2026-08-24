@@ -1,0 +1,23 @@
+[Unit]
+Description=Zodiac telephone client for HomeAI
+# The client survives HomeAI being down (it retries), so this only waits for a
+# network, not for the server.
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/zodiac-client
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/pi/zodiac-client/.venv/bin/python -m zodiac_client.app --config /home/pi/zodiac-client/config.yaml
+# An appliance restarts. Always.
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+
+# NOTE: enable this only once hook.source is "gpio". Under systemd there is no
+# terminal, so the "stdin" hook can never fire a call — run the client by hand
+# during bring-up.

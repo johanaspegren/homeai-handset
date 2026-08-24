@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+websockets
+httpx
+python-dotenv
+
+# Speech in and out — the same stack homeai-voice runs, so the models and the
+# Piper voice files are shared rather than duplicated.
+faster-whisper
+piper-tts
+# silero-VAD ships inside openWakeWord; we use only the VAD, not a wake word
+# (the hook switch is the wake word).
+openwakeword
+numpy
+
+# CUDA runtime libs for GPU speech-to-text (see WHISPER_DEVICE in .env.example).
+# Harmless on CPU-only machines — _cudalibs.py only loads them if present.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

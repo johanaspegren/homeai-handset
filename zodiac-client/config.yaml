@@ -1,0 +1,40 @@
+terminal:
+  id: zodiac-01
+  name: Zodiac Sigma 300
+
+homeai:
+  # The handset service on the homeai box. Use the hostname, not the DHCP
+  # address — homeai's lease has moved before.
+  websocket_url: ws://homeai.local:8400/zodiac
+  reconnect_delay_s: 1.0
+  reconnect_max_delay_s: 15.0
+
+audio:
+  # The C-Media USB dongle wired to the Zodiac's handset. Find the real name
+  # with `arecord -L | grep CARD` on the Pi — do not guess, and do not use a
+  # bare card index (they renumber).
+  capture_device: plughw:CARD=Device,DEV=0
+  playback_device: plughw:CARD=Device,DEV=0
+  capture_rate: 16000
+  # Overridden at call start by whatever rate the service announces (Piper's
+  # medium voices are 22050); this is only the fallback.
+  playback_rate: 22050
+  frame_ms: 40
+  # ALSA playback buffering. Lower = snappier first word, higher = more robust
+  # to Wi-Fi hiccups. 200 ms is a reasonable compromise on a cabled Pi.
+  buffer_us: 200000
+  period_us: 50000
+
+hook:
+  # stdin: ENTER lifts/replaces the handset (until the cradle switch is wired)
+  # gpio:  the real switch on `pin`
+  # always: permanently off-hook, for soak tests
+  source: stdin
+  pin: 17
+  # Set true if the switch closes when the handset is LIFTED rather than down.
+  invert: false
+  debounce_ms: 50
+  pull_up: true
+
+logging:
+  level: INFO

@@ -1,0 +1,8 @@
+# Deliberately tiny: everything here is pure Python, so the same install works
+# on a Pi 5 and on an ARMv6 Pi Zero W. Nothing that needs NEON, a compiler, or
+# a desktop audio stack. Audio is arecord/aplay from alsa-utils (apt).
+websockets>=12
+PyYAML>=6
+
+# Only needed when hook.source is "gpio" — install on the Pi, skip on a laptop:
+#   pip install gpiozero
