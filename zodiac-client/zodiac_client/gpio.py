@@ -49,16 +49,22 @@ class GpioHook(HookSource):
         self._button.when_released = lambda: self._emit(True)
         log.info("hook on GPIO %d | invert=%s | debounce=%dms", pin, invert, debounce_ms)
 
+    def _sense(self, off_hook: bool) -> bool:
+        """Apply the wiring sense. One definition, used by both the edges and
+        the startup position — they must never disagree about which way round
+        the switch is."""
+        return not off_hook if self.invert else off_hook
+
     def _emit(self, off_hook: bool) -> None:
         # gpiozero calls this from its own thread.
-        if self.invert:
-            off_hook = not off_hook
-        self._loop.call_soon_threadsafe(self._queue.put_nowait, off_hook)
+        self._loop.call_soon_threadsafe(self._queue.put_nowait, self._sense(off_hook))
 
     async def events(self):
         # Report the current position first, so starting up with the handset
         # already lifted opens a call instead of waiting for an edge.
-        yield self._button.is_released != self.invert
+        # gpiozero exposes is_pressed and no is_released: pressed is the switch
+        # closed, which is what when_pressed reports as on-hook before _sense.
+        yield self._sense(not self._button.is_pressed)
         while True:
             yield await self._queue.get()
 
