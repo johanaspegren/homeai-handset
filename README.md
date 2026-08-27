@@ -224,7 +224,7 @@ file and a test fails if they drift.
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -t .
-# Ran 25 tests ... OK
+# Ran 48 tests ... OK
 ```
 
 No models and no sockets: the transport, STT, LLM and TTS are all injected, so
