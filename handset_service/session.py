@@ -12,6 +12,7 @@ a socket, and the STT/LLM/TTS callables are injected so tests don't need models.
 
 import asyncio
 import logging
+import random
 
 from . import config, handsfree, llm, protocol, stt, tts
 from .logging_config import CallLog
@@ -22,6 +23,21 @@ from .voice_control import set_voice_muted
 # PCM slice size for outbound audio frames (~93 ms at 22050 Hz mono) — small
 # enough that the earpiece starts within a frame of synthesis finishing.
 AUDIO_FRAME_BYTES = 4096
+
+# The last greeting used, so the next call doesn't repeat it. With a handful of
+# lines, plain random choice repeats often enough to sound like a bug rather
+# than variety.
+_last_greeting: str | None = None
+
+
+def pick_greeting() -> str:
+    """One of the configured greetings, never the one before it."""
+    global _last_greeting
+    pool = [g for g in config.GREETINGS if g != _last_greeting] or config.GREETINGS
+    if not pool:
+        return ""
+    _last_greeting = random.choice(pool)
+    return _last_greeting
 
 
 class Call:
@@ -37,6 +53,7 @@ class Call:
         sample_rate=None,
         segmenter=None,
         greeting: str = None,
+        greeting_delay_s: float = None,
         mute_voice=None,
     ) -> None:
         self._send_json = send_json
@@ -48,7 +65,10 @@ class Call:
         self._chat = chat or llm.stream_reply
         self._synthesize = synthesize or tts.synthesize
         self._sample_rate = sample_rate or tts.sample_rate
-        self._greeting = config.GREETING if greeting is None else greeting
+        self._greeting = pick_greeting() if greeting is None else greeting
+        self._greeting_delay_s = (
+            config.GREETING_DELAY_S if greeting_delay_s is None else greeting_delay_s
+        )
         self._mute_voice = mute_voice or set_voice_muted
 
         self._segmenter = segmenter or Segmenter(Vad(), on_speech_start=self._speech_started)
@@ -87,11 +107,19 @@ class Call:
 
     async def _greet(self) -> None:
         try:
+            # A moment to get the handset from the cradle to your ear. This is
+            # a task, so replacing the handset during it cancels the greeting
+            # before a word is spoken rather than talking to an empty room.
+            if self._greeting_delay_s:
+                await asyncio.sleep(self._greeting_delay_s)
             await self._speak_text(self._greeting)
         except Exception:
             logging.exception("greeting failed")
         finally:
-            await self._listen()
+            # Same guard as _run_turn: a cancelled greeting must not hand the
+            # turn back on a call that has already ended.
+            if self.active:
+                await self._listen()
 
     async def hang_up(self) -> None:
         """Handset replaced: drop everything in flight, now."""

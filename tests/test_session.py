@@ -7,9 +7,11 @@ replacing the handset stops everything.
 """
 
 import asyncio
+import time
 import unittest
+from unittest import mock
 
-from handset_service import protocol
+from handset_service import config, protocol, session
 from handset_service.session import Call
 from tests.test_vad import FRAME, ScriptedVad
 from handset_service.vad import Segmenter
@@ -34,7 +36,8 @@ class FakeTransport:
 
 
 def make_call(transport, *, script=None, reply="Sunny tomorrow.", transcript="hello",
-              greeting="Hello.", chat=None, synthesize=None, mute_log=None):
+              greeting="Hello.", greeting_delay_s=0, chat=None, synthesize=None,
+              mute_log=None):
     async def fake_chat(text, **kwargs):
         for token in reply.split(" "):
             yield token + " "
@@ -56,6 +59,7 @@ def make_call(transport, *, script=None, reply="Sunny tomorrow.", transcript="he
         sample_rate=lambda: 22050,
         segmenter=segmenter,
         greeting=greeting,
+        greeting_delay_s=greeting_delay_s,
         mute_voice=fake_mute,
     )
 
@@ -88,6 +92,68 @@ class CallTests(unittest.IsolatedAsyncioTestCase):
         await call.start()
         await call._turn
         self.assertFalse(called)
+
+    async def test_the_greeting_waits_for_the_handset_to_reach_your_ear(self):
+        """Answering instantly means she's mid-word before the earpiece
+        arrives. The pause is before the greeting, not before answering."""
+        transport = FakeTransport()
+        call = make_call(transport, greeting_delay_s=0.05)
+
+        started = time.perf_counter()
+        await call.start()
+        # call_started goes out at once — only the speech waits behind the pause.
+        self.assertEqual(transport.messages[0]["type"], protocol.CALL_STARTED)
+        await call._turn
+        elapsed = time.perf_counter() - started
+
+        self.assertGreaterEqual(elapsed, 0.04, "the greeting did not wait")
+        self.assertIn(protocol.ASSISTANT_SPEAKING, transport.types())
+        self.assertTrue(transport.audio)
+
+    async def test_replacing_the_handset_during_the_pause_says_nothing(self):
+        """Lift and put down again: she should not talk to an empty room, nor
+        hand the turn back on a call that has ended."""
+        transport = FakeTransport()
+        call = make_call(transport, greeting_delay_s=5)
+        await call.start()
+        # Let the greeting task actually start and reach the pause. Without
+        # this the task is cancelled before its first line ever runs, which
+        # skips the cleanup path this test exists to cover.
+        await asyncio.sleep(0)
+        self.assertFalse(call._turn.done())
+
+        await call.hang_up()
+
+        self.assertNotIn(protocol.ASSISTANT_SPEAKING, transport.types())
+        self.assertFalse(transport.audio, "nothing should have been spoken")
+        self.assertNotIn(protocol.LISTENING, transport.types())
+        self.assertFalse(call._accepting, "a dead call must not reopen the mic")
+
+    async def test_the_greeting_varies_between_calls(self):
+        """A handful of lines, and never the same one twice running — plain
+        random choice repeats often enough to sound like a fault."""
+        pool = ["One.", "Two.", "Three.", "Four."]
+        with mock.patch.object(config, "GREETINGS", pool):
+            session._last_greeting = None
+            picked = [session.pick_greeting() for _ in range(40)]
+
+        # Every configured line gets used — alternating between two of them
+        # would satisfy "it varies" while quietly wasting the other two.
+        self.assertEqual(set(picked), set(pool), "some greetings were never used")
+        for before, after in zip(picked, picked[1:]):
+            self.assertNotEqual(before, after, "greeted twice the same way running")
+
+    async def test_a_single_configured_greeting_still_works(self):
+        """HANDSET_GREETING with no '|' is one line, exactly as before."""
+        with mock.patch.object(config, "GREETINGS", ["HomeAI. Hello Johan."]):
+            session._last_greeting = None
+            self.assertEqual(session.pick_greeting(), "HomeAI. Hello Johan.")
+            self.assertEqual(session.pick_greeting(), "HomeAI. Hello Johan.")
+
+    async def test_no_greeting_configured_answers_silently(self):
+        with mock.patch.object(config, "GREETINGS", []):
+            session._last_greeting = None
+            self.assertEqual(session.pick_greeting(), "")
 
     async def test_a_spoken_turn_runs_the_whole_pipeline(self):
         transport = FakeTransport()

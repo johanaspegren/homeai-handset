@@ -100,8 +100,27 @@ VAD_MIN_SPEECH_MS = int(os.getenv("VAD_MIN_SPEECH_MS", "250"))  # ignore shorter
 VAD_MAX_UTTERANCE_MS = int(os.getenv("VAD_MAX_UTTERANCE_MS", "20000"))
 
 # --- call behaviour --------------------------------------------------------
-# Spoken the instant the handset comes off the hook, before any model is
-# involved — picking up a phone should never wait on an LLM.
-GREETING = os.getenv("HANDSET_GREETING", "HomeAI. Hello Johan.")
+# Spoken as the handset comes off the hook, before any model is involved —
+# picking up a phone should never wait on an LLM.
+#
+# Several lines separated by "|", one picked per call, so she doesn't greet you
+# with exactly the same words every time. A single line (no "|") behaves as it
+# always did; empty means answer silently.
+GREETINGS = [
+    line.strip()
+    for line in os.getenv(
+        "HANDSET_GREETING",
+        "HomeAI. Hello Johan."
+        "|Kiri here. Hello Johan."
+        "|Hello Johan."
+        "|Kiri speaking.",
+    ).split("|")
+    if line.strip()
+]
+# Lifting a handset and getting it to your ear takes a moment. Without this she
+# has already started the first word by the time it arrives. It's dead time on
+# the clock, but it's dead time you spend moving your arm, so it doesn't read
+# as latency the way a pause after a question does.
+GREETING_DELAY_S = int(os.getenv("HANDSET_GREETING_DELAY_MS", "800")) / 1000
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

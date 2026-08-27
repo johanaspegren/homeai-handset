@@ -44,9 +44,11 @@ voice and Discord share, so a call can pick up where the workshop left off. The
 
 Milestones 1, 3, 4 and 6 of the spec, with 5 stood in for:
 
-- **Call lifecycle** — off-hook opens a session, the greeting is spoken
-  immediately (a fixed line, never a model call), hanging up cancels whatever
-  is in flight mid-sentence.
+- **Call lifecycle** — off-hook opens a session, the greeting follows after a
+  short pause for the handset to reach your ear (a fixed line, never a model
+  call, and one of several so she doesn't say the same words every time),
+  hanging up cancels whatever is in flight mid-sentence — including the pause,
+  so lifting and replacing the handset says nothing at all.
 - **Turn taking** — silero-VAD on the server decides when you've stopped
   talking. No push-to-talk, no wake word.
 - **Speech** — faster-whisper `small.en` on the GPU (~0.2 s), Piper for the
@@ -139,7 +141,8 @@ installed on the Pi, not here.
 | `HANDSET_PORT` | `8400` | WebSocket port (`/zodiac`, `/zodiac/echo`) |
 | `HOMEAI_CHAT_URL` | `http://localhost:8000/chat` | the brain |
 | `HANDSET_USER` | `johan` | whose conversation history this is |
-| `HANDSET_GREETING` | `HomeAI. Hello Johan.` | spoken the instant you pick up |
+| `HANDSET_GREETING` | four lines | spoken as you pick up; `\|`-separated, one per call |
+| `HANDSET_GREETING_DELAY_MS` | `800` | time to get the handset to your ear before she starts |
 | `HANDSET_MUTES_VOICE` | `1` | hold the workshop's open mic for the call, when it's running at all |
 | `HANDSET_HANDSFREE_KEY` | `*` | keypad button that toggles the workshop mic (keypad not mapped yet) |
 | `HOMEAI_SH` | `../homeai.sh` | the stack script hands-free uses to start/stop voice |
@@ -227,7 +230,7 @@ file and a test fails if they drift.
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -t .
-# Ran 55 tests ... OK
+# Ran 60 tests ... OK
 ```
 
 No models and no sockets: the transport, STT, LLM and TTS are all injected, so
