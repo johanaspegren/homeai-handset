@@ -4,11 +4,17 @@
 websockets>=12
 PyYAML>=6
 
-# The cradle switch (hook.source: gpio, the shipped default since it was wired).
-# gpiozero itself is pure Python; it needs a pin factory underneath, and on
-# Bookworm/Pi 5 that's lgpio. The venv is built without system site packages,
-# so apt's python3-lgpio isn't visible here and it has to come from pip —
-# piwheels serves a prebuilt wheel on Raspberry Pi OS, so no compiler is
-# involved. On a laptop, install neither and set hook.source: stdin.
-gpiozero>=2
-lgpio
+# GPIO is deliberately NOT here. The cradle switch needs gpiozero and a pin
+# factory under it (lgpio on Bookworm), and pip's lgpio is a source dist: it
+# swigs and compiles a C extension, so `pip install lgpio` fails on a clean Pi
+# with "command 'swig' failed". Installing swig and python3-dev to get past
+# that puts a build toolchain on every Pi, which is the thing this file exists
+# to avoid.
+#
+# So GPIO comes from apt as prebuilt system packages, and install.sh builds the
+# venv with --system-site-packages so it can see them:
+#
+#   sudo apt install python3-gpiozero python3-lgpio
+#
+# Nothing pip installs here needs a compiler, which is what keeps an ARMv6 Pi
+# Zero W a copy and a config edit.

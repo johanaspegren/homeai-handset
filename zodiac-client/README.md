@@ -15,7 +15,7 @@ Development hardware: Pi 4/5 at `192.168.68.153`, wired LAN.
 ## Install (on the Pi)
 
 ```bash
-sudo apt install alsa-utils python3-venv
+sudo apt install alsa-utils python3-venv python3-gpiozero python3-lgpio
 git clone <this repo> ~/dev/homeai-handset
 cd ~/dev/homeai-handset/zodiac-client
 ./install.sh
@@ -23,6 +23,11 @@ cd ~/dev/homeai-handset/zodiac-client
 
 The systemd unit expects exactly that path (`/home/pi/dev/homeai-handset`); if
 yours differs, edit `WorkingDirectory` and `ExecStart` to match.
+
+GPIO comes from apt, not pip: `pip install lgpio` is a source dist that swigs
+and compiles a C extension and fails on a clean Pi with `command 'swig' failed`.
+`install.sh` builds the venv with `--system-site-packages` so it can see apt's
+prebuilt copies, which keeps everything pip installs pure-Python.
 
 > **Install from *this* directory's `requirements.txt`, not the repo root's.**
 > The root one is the homeai box's — faster-whisper, onnxruntime and two NVIDIA
@@ -165,9 +170,10 @@ need real echo cancellation.
 **The call starts and stops backwards** — `hook.invert` is wrong. See "The hook
 switch".
 
-**`BadPinFactory` / `No module named 'lgpio'`** — the venv has `gpiozero` but no
-pin factory it can use. `.venv/bin/pip install lgpio`, and check the account is
-in the `gpio` group (`groups`). `install.sh` tests for this.
+**`BadPinFactory` / `No module named 'lgpio'`** — `sudo apt install
+python3-gpiozero python3-lgpio` (not pip — see above), check the venv was built
+with `--system-site-packages`, and check the account is in the `gpio` group
+(`groups`). `install.sh` tests for all three.
 
 **The hook fires twice per lift** — cradle switch bounce beyond the 50 ms
 `debounce_ms`. Raise it; the cost is only how fast a hang-up registers.

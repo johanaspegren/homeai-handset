@@ -28,23 +28,37 @@ if [ -n "$missing" ]; then
 fi
 echo "✔ arecord and aplay present"
 
+echo "▶ checking for GPIO packages ..."
+gpio_missing=""
+for pkg in gpiozero lgpio; do
+    python3 -c "import $pkg" 2>/dev/null || gpio_missing="$gpio_missing python3-$pkg"
+done
+if [ -n "$gpio_missing" ]; then
+    echo "⚠ missing:$gpio_missing — the hook switch needs them:"
+    echo "    sudo apt install$gpio_missing"
+    echo "  (apt, not pip: pip's lgpio compiles a C extension and wants swig.)"
+else
+    echo "✔ gpiozero and lgpio present"
+fi
+
 echo "▶ creating .venv ..."
-python3 -m venv .venv
+# --system-site-packages so the venv can see apt's python3-gpiozero and
+# python3-lgpio. pip's lgpio is a source dist that swigs and compiles a C
+# extension; apt's is prebuilt. See requirements.txt.
+python3 -m venv --system-site-packages .venv
 .venv/bin/pip install --quiet --upgrade pip
 .venv/bin/pip install --quiet -r requirements.txt
-echo "✔ installed: $(.venv/bin/pip list --format=freeze | tr '\n' ' ')"
+echo "✔ installed: $(.venv/bin/pip list --format=freeze --local | tr '\n' ' ')"
 
-# The cradle switch is wired and hook.source: gpio is the default, so gpiozero
-# and its pin factory are in requirements.txt now rather than behind a flag.
-# Check the pin factory can actually reach the GPIO chip — the import succeeds
-# on any machine, opening a pin doesn't, and finding that out at boot under
-# systemd is a worse place to find it out.
+# The import succeeds on any machine; opening a pin doesn't. Finding that out
+# at boot under systemd is a worse place to find it out.
 echo "▶ checking GPIO access ..."
 if .venv/bin/python -c "from gpiozero import Device; Device.ensure_pin_factory()" 2>/dev/null; then
     echo "✔ GPIO reachable"
 else
     echo "⚠ no usable GPIO pin factory — the hook switch won't work."
-    echo "  On a Pi: check this account is in the 'gpio' group (groups \$USER)."
+    echo "  On a Pi:     sudo apt install python3-gpiozero python3-lgpio"
+    echo "               and check this account is in the 'gpio' group (groups)."
     echo "  On a laptop: set hook.source: stdin in config.yaml."
 fi
 
