@@ -74,8 +74,8 @@ Milestones 1, 3, 4 and 6 of the spec, with 5 stood in for:
   client's hook is an interface with three implementations (`gpio`, `stdin`,
   `always`), so wiring it was a config change and nothing more. The Zodiac
   closes its switch when the handset is *lifted*, the opposite of the classic
-  cradle plunger, hence `hook.invert: true`. The client runs under systemd on
-  the Pi.
+  cradle plunger, hence `hook.invert: true`. A systemd unit for running the
+  client at boot ships in `zodiac-client/systemd/`.
 
 Not yet: keypad (unmapped — see `tools/keypad_mapper.py`), LEDs (logged, not
 lit), the ringer, barge-in, and the earpiece amplifier.
