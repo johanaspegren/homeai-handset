@@ -26,13 +26,16 @@ audio:
   period_us: 50000
 
 hook:
-  # stdin: ENTER lifts/replaces the handset (until the cradle switch is wired)
-  # gpio:  the real switch on `pin`
+  # gpio:  the real cradle switch on `pin` — wired 2026-08-27
+  # stdin: ENTER lifts/replaces the handset (bring-up on a desk)
   # always: permanently off-hook, for soak tests
-  source: stdin
+  source: gpio
   pin: 17
-  # Set true if the switch closes when the handset is LIFTED rather than down.
-  invert: false
+  # The Zodiac closes the switch when the handset is LIFTED, which is the
+  # opposite of the classic cradle plunger gpio.py assumes. Measured, not
+  # guessed: with invert false the phone opens a call while sitting in the
+  # cradle and hangs up when you pick it up.
+  invert: true
   debounce_ms: 50
   pull_up: true
 

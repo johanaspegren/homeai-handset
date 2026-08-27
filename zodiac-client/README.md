@@ -16,10 +16,13 @@ Development hardware: Pi 4/5 at `192.168.68.153`, wired LAN.
 
 ```bash
 sudo apt install alsa-utils python3-venv
-git clone <this repo> ~/homeai-handset   # or copy just the zodiac-client/ directory
-cd ~/homeai-handset/zodiac-client
-./install.sh                             # WITH_GPIO=1 ./install.sh once the switch is wired
+git clone <this repo> ~/dev/homeai-handset
+cd ~/dev/homeai-handset/zodiac-client
+./install.sh
 ```
+
+The systemd unit expects exactly that path (`/home/pi/dev/homeai-handset`); if
+yours differs, edit `WorkingDirectory` and `ExecStart` to match.
 
 > **Install from *this* directory's `requirements.txt`, not the repo root's.**
 > The root one is the homeai box's — faster-whisper, onnxruntime and two NVIDIA
@@ -53,8 +56,8 @@ aplay   -D plughw:CARD=Device,DEV=0 /tmp/t.wav
 .venv/bin/python -m zodiac_client.app --config config.yaml
 ```
 
-With `hook.source: stdin` (the default until the cradle switch is wired),
-**ENTER lifts the handset and ENTER replaces it**:
+Lift the handset and it calls; replace it and everything stops. (With
+`hook.source: stdin`, ENTER stands in for both — useful on a desk.)
 
 ```text
 ☎  ENTER = lift handset / replace handset, q = quit
@@ -89,9 +92,9 @@ homeai box. If the echo is wrong too, it's the wiring, the card or ALSA.
 | `audio.playback_rate` | `22050` | fallback only — the server announces the real rate at call start |
 | `audio.frame_ms` | `40` | microphone chunk size |
 | `audio.buffer_us` | `200000` | ALSA playback buffer: lower = snappier first word, higher = more forgiving |
-| `hook.source` | `stdin` | `gpio` \| `stdin` \| `always` |
+| `hook.source` | `gpio` | `gpio` \| `stdin` \| `always` |
 | `hook.pin` | `17` | BCM number of the cradle switch |
-| `hook.invert` | `false` | set true if the switch closes when the handset is *lifted* |
+| `hook.invert` | `true` | the Zodiac closes its switch when the handset is *lifted* |
 
 `HOMEAI_WS_URL` overrides the URL from the environment, for debugging on a
 strange network.
@@ -99,18 +102,25 @@ strange network.
 ## The hook switch
 
 The hook is the phone's power button and its privacy guarantee: between "down"
-and "lifted" there is no microphone. Because the Zodiac's cradle switch isn't
-wired to the Pi yet, `gpio.py` defines a `HookSource` interface with three
-implementations that emit identical events:
+and "lifted" there is no microphone. `gpio.py` defines a `HookSource` interface
+with three implementations that emit identical events:
 
-- **`gpio`** — the real switch, debounced (gpiozero `bounce_time`). Assumes the
-  switch closes to ground when the handset is **down**; measure with a
-  multimeter and set `invert: true` if the Zodiac disagrees.
-- **`stdin`** — ENTER toggles. What the prototype uses today.
+- **`gpio`** — the real switch on BCM 17, debounced (gpiozero `bounce_time`).
+  What the Zodiac runs.
+- **`stdin`** — ENTER toggles. Bring-up on a desk, with no GPIO at all.
 - **`always`** — permanently off-hook, for soak tests.
 
-Nothing downstream knows the difference, so wiring the switch is a one-line
-config change, not a rewrite.
+Nothing downstream knows the difference, which is why wiring the switch was a
+config change rather than a rewrite.
+
+**`invert` is a safety setting, not a preference.** `GpioHook` is written for
+the classic cradle plunger — switch closed to ground when the handset is
+**down**, so `pressed` means on-hook. The Zodiac is the other way round: it
+closes when the handset is **lifted**, hence `invert: true`. Get this backwards
+and the phone opens a call while sitting in the cradle and hangs up when you
+pick it up — meaning the microphone is live at exactly the times the hook is
+supposed to guarantee it isn't. Lifting the handset must log `OFF_HOOK`; if it
+logs `ON_HOOK`, flip `invert` before going any further.
 
 ## Run at boot
 
@@ -124,8 +134,14 @@ sudo systemctl enable --now zodiac-client
 journalctl -u zodiac-client -f
 ```
 
-**Only enable this once `hook.source` is `gpio`.** Under systemd there is no
-terminal, so the `stdin` hook can never fire a call.
+The unit runs as `pi` from `/home/pi/dev/homeai-handset/zodiac-client`. Edit
+both paths if your checkout is elsewhere.
+
+Run the client by hand at least once before enabling this, and confirm lifting
+the handset logs `OFF_HOOK` — under systemd there is no terminal, so the
+`stdin` hook can never fire a call and a wrong `invert` is harder to spot. Stop
+the service before running it by hand again: only one process can own the sound
+card.
 
 ## Troubleshooting
 
@@ -145,3 +161,13 @@ need real echo cancellation.
 
 **Nothing happens on ENTER** — you are probably running under systemd with the
 `stdin` hook. See above.
+
+**The call starts and stops backwards** — `hook.invert` is wrong. See "The hook
+switch".
+
+**`BadPinFactory` / `No module named 'lgpio'`** — the venv has `gpiozero` but no
+pin factory it can use. `.venv/bin/pip install lgpio`, and check the account is
+in the `gpio` group (`groups`). `install.sh` tests for this.
+
+**The hook fires twice per lift** — cradle switch bounce beyond the 50 ms
+`debounce_ms`. Raise it; the cost is only how fast a hang-up registers.

@@ -70,9 +70,12 @@ Milestones 1, 3, 4 and 6 of the spec, with 5 stood in for:
   mouthpiece comes back out of the original earpiece, so the microphone, the
   USB card, the WebSocket and the playback path are all known good
   independently of Whisper, Kiri and Piper.
-- **Hook stand-in** — the cradle switch isn't wired yet, so the client's hook
-  is an interface with three implementations (`gpio`, `stdin`, `always`). Only
-  `hook.source` in config.yaml changes when the real switch arrives.
+- **The hook switch** — wired to BCM 17 and running (spec Milestone 5). The
+  client's hook is an interface with three implementations (`gpio`, `stdin`,
+  `always`), so wiring it was a config change and nothing more. The Zodiac
+  closes its switch when the handset is *lifted*, the opposite of the classic
+  cradle plunger, hence `hook.invert: true`. The client runs under systemd on
+  the Pi.
 
 Not yet: keypad (unmapped — see `tools/keypad_mapper.py`), LEDs (logged, not
 lit), the ringer, barge-in, and the earpiece amplifier.
@@ -250,15 +253,15 @@ long after you stop, lower it.
 
 ## Roadmap
 
-1. Wire the cradle switch to GPIO and set `hook.source: gpio` (spec Milestone 5).
-2. Map the keypad with `tools/keypad_mapper.py`, then decide what keys do.
-3. An amplifier for the ~140 Ω earpiece — it's intelligible but quiet.
-4. Barge-in: interrupt Kiri by talking over her. The AEC groundwork exists in
+1. Map the keypad with `tools/keypad_mapper.py`, then decide what keys do.
+2. An amplifier for the ~140 Ω earpiece — it's intelligible but quiet.
+3. Barge-in: interrupt Kiri by talking over her. The AEC groundwork exists in
    `~/dev/aec-test.sh`, but it's a PipeWire drop-in on the workshop's analogue
    card — the Pi's USB card needs its own answer.
-5. The ringer: Kiri calling *you* — reminders, doorbell, print finished.
-6. Pi Zero W migration (spec Milestone 9). The client is already stdlib +
-   `websockets` + `PyYAML` for exactly this reason.
+4. The ringer: Kiri calling *you* — reminders, doorbell, print finished.
+5. Pi Zero W migration (spec Milestone 9). The client is already stdlib +
+   `websockets` + `PyYAML` for exactly this reason — plus `gpiozero`/`lgpio`
+   for the hook now, both of which piwheels has prebuilt for ARMv6.
 
 ## Project structure
 

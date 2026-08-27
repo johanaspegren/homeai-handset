@@ -18,10 +18,11 @@ latency numbers and roadmap.
 
 These dependency sets must never be mixed. The root one pulls faster-whisper,
 onnxruntime and two NVIDIA CUDA wheels — gigabytes that do nothing on a Pi and
-that the client never imports. The client is deliberately stdlib +
-`websockets` + `PyYAML`, with audio shelled out to `arecord`/`aplay`, so it can
-move to an ARMv6 Pi Zero W unchanged. Keep it that way: no numpy, no ONNX, no
-compiler, nothing needing a desktop audio stack.
+that the client never imports. The client is deliberately small — `websockets`,
+`PyYAML`, and `gpiozero`/`lgpio` for the hook switch — with audio shelled out to
+`arecord`/`aplay`, so it can move to an ARMv6 Pi Zero W unchanged. Keep it that
+way: no numpy, no ONNX, no compiler, nothing needing a desktop audio stack.
+Anything added here must have a prebuilt ARMv6 wheel on piwheels.
 
 ## Commands
 

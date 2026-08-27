@@ -8,9 +8,11 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=/home/pi/zodiac-client
+# The Pi runs the whole repo checkout; the client lives in zodiac-client/ and
+# has its own venv there (never the repo root's — those are the homeai box's).
+WorkingDirectory=/home/pi/dev/homeai-handset/zodiac-client
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/pi/zodiac-client/.venv/bin/python -m zodiac_client.app --config /home/pi/zodiac-client/config.yaml
+ExecStart=/home/pi/dev/homeai-handset/zodiac-client/.venv/bin/python -m zodiac_client.app --config /home/pi/dev/homeai-handset/zodiac-client/config.yaml
 # An appliance restarts. Always.
 Restart=always
 RestartSec=3
@@ -18,6 +20,7 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 
-# NOTE: enable this only once hook.source is "gpio". Under systemd there is no
-# terminal, so the "stdin" hook can never fire a call — run the client by hand
-# during bring-up.
+# NOTE: this needs hook.source "gpio" in config.yaml, which is now the shipped
+# default. Under systemd there is no terminal, so the "stdin" hook can never
+# fire a call — if you switch back to it for bring-up, stop the service first
+# or it will fight you for the sound card.

@@ -34,11 +34,18 @@ python3 -m venv .venv
 .venv/bin/pip install --quiet -r requirements.txt
 echo "✔ installed: $(.venv/bin/pip list --format=freeze | tr '\n' ' ')"
 
-# gpiozero is only needed once the cradle switch is wired; it's not in
-# requirements.txt so a laptop or a Pi without the switch installs cleanly.
-if [ "${WITH_GPIO:-}" = "1" ]; then
-    echo "▶ installing gpiozero (hook switch) ..."
-    .venv/bin/pip install --quiet gpiozero
+# The cradle switch is wired and hook.source: gpio is the default, so gpiozero
+# and its pin factory are in requirements.txt now rather than behind a flag.
+# Check the pin factory can actually reach the GPIO chip — the import succeeds
+# on any machine, opening a pin doesn't, and finding that out at boot under
+# systemd is a worse place to find it out.
+echo "▶ checking GPIO access ..."
+if .venv/bin/python -c "from gpiozero import Device; Device.ensure_pin_factory()" 2>/dev/null; then
+    echo "✔ GPIO reachable"
+else
+    echo "⚠ no usable GPIO pin factory — the hook switch won't work."
+    echo "  On a Pi: check this account is in the 'gpio' group (groups \$USER)."
+    echo "  On a laptop: set hook.source: stdin in config.yaml."
 fi
 
 cat <<'NEXT'
@@ -55,13 +62,22 @@ Next:
        .venv/bin/python -m zodiac_client.app --check-audio
 
   3. Prove the audio path with no AI in it — whatever you say comes straight
-     back out of the earpiece:
+     back out of the earpiece. Lift the handset to start, replace it to stop:
 
        HOMEAI_WS_URL=ws://homeai.local:8400/zodiac/echo \
            .venv/bin/python -m zodiac_client.app
 
-  4. Then the real thing. ENTER lifts the handset, ENTER replaces it:
+  4. Then the real thing, by hand once before you trust it to boot:
 
        .venv/bin/python -m zodiac_client.app
+
+     Lifting the handset should log OFF_HOOK. If it logs ON_HOOK instead, the
+     switch senses the other way round — flip hook.invert in config.yaml.
+
+  5. Run it at boot:
+
+       sudo cp systemd/zodiac-client.service /etc/systemd/system/
+       sudo systemctl enable --now zodiac-client
+       journalctl -u zodiac-client -f
 
 NEXT

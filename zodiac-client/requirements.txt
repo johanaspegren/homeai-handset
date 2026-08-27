@@ -4,5 +4,11 @@
 websockets>=12
 PyYAML>=6
 
-# Only needed when hook.source is "gpio" — install on the Pi, skip on a laptop:
-#   pip install gpiozero
+# The cradle switch (hook.source: gpio, the shipped default since it was wired).
+# gpiozero itself is pure Python; it needs a pin factory underneath, and on
+# Bookworm/Pi 5 that's lgpio. The venv is built without system site packages,
+# so apt's python3-lgpio isn't visible here and it has to come from pip —
+# piwheels serves a prebuilt wheel on Raspberry Pi OS, so no compiler is
+# involved. On a laptop, install neither and set hook.source: stdin.
+gpiozero>=2
+lgpio
