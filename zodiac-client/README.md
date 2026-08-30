@@ -209,6 +209,26 @@ journalctl -u zodiac-client -f
 The unit runs as `pi` from `/home/pi/dev/homeai-handset/zodiac-client`. Edit
 both paths if your checkout is elsewhere.
 
+### After pulling new code
+
+The unit runs the checkout in place, so a `git pull` needs one command and not
+the install block above:
+
+```bash
+git pull && sudo systemctl restart zodiac-client
+journalctl -u zodiac-client -f
+```
+
+`daemon-reload` and re-copying the unit are only for when
+`systemd/zodiac-client.service` itself changed — `systemctl status
+zodiac-client` says `changed on disk` when that's the case. `enable` is once,
+ever.
+
+`config.yaml` is tracked in git and edited on the Pi (the ALSA device name, the
+keypad mapping), so a pull can land on top of your local edits. If git refuses
+to pull, that's what it's protecting: keep the Pi's copy
+(`git checkout --ours` / stash and reapply), don't clobber it.
+
 Run the client by hand at least once before enabling this, and confirm lifting
 the handset logs `OFF_HOOK` — under systemd there is no terminal, so the
 `stdin` hook can never fire a call and a wrong `invert` is harder to spot. Stop
