@@ -100,6 +100,11 @@ homeai box. If the echo is wrong too, it's the wiring, the card or ALSA.
 | `hook.source` | `gpio` | `gpio` \| `stdin` \| `always` |
 | `hook.pin` | `17` | BCM number of the cradle switch |
 | `hook.invert` | `true` | the Zodiac closes its switch when the handset is *lifted* |
+| `keypad.enabled` | `true` | off by default in code; on in the shipped config |
+| `keypad.pins` | `[27, 22, 5, 6, 13, 19, 26]` | the seven conductors, BCM numbers |
+| `keypad.mapping` | `{"1": [22, 26], ...}` | measured pairs, unordered |
+| `keypad.debounce_ms` | `30` | how long a reading must hold still to be believed |
+| `keypad.scan_hz` | `70` | full sweeps per second |
 
 `HOMEAI_WS_URL` overrides the URL from the environment, for debugging on a
 strange network.
@@ -126,6 +131,68 @@ and the phone opens a call while sitting in the cradle and hangs up when you
 pick it up — meaning the microphone is live at exactly the times the hook is
 supposed to guarantee it isn't. Lifting the handset must log `OFF_HOOK`; if it
 logs `ON_HOOK`, flip `invert` before going any further.
+
+## The keypad
+
+The keypad is the original one, with the phone's electronics removed: seven
+bare conductors onto GPIO, a passive switch matrix, no diodes and **no series
+resistors**. A pressed key is 25-300 ohms between two of those seven pins.
+
+That last part sets the one rule `keypad.py` exists to keep:
+
+> At any instant exactly **one** matrix pin is an output, it is **LOW**, and
+> every other matrix pin is an input with its pull-up on. Nothing is ever
+> driven HIGH.
+
+With no resistance in the way, two pins driven as outputs and bridged by a
+pressed key would put one straight into the other, and the Pi's pad is what
+gives way. So the scan drives one line at a time and restores it before moving
+on, even if the sweep raises — and `tests/test_keypad.py` fails if either half
+of that is ever broken. Read the header of `keypad.py` before changing the scan.
+
+It uses `lgpio` directly rather than gpiozero, which is otherwise this project's
+GPIO library. Scanning means flipping a line between input and output about
+seven hundred times a second; through gpiozero that is a device object closed
+and another constructed each time, while lgpio re-claims a line on a handle we
+already hold. The hook keeps its gpiozero `Button` on GPIO17 — separate handles
+on the same chip are fine as long as they don't claim the same lines, and 17 is
+not in the matrix.
+
+Keypad watching runs alongside the hook, not inside a call, so a press
+registers with the handset still in the cradle.
+
+**Nothing acts on the buttons yet.** They are logged, and that is the whole
+feature for now:
+
+```text
+21:14:31.204 | KEYPAD | KEY_DOWN 1
+21:14:31.402 | KEYPAD | KEY_UP 1
+```
+
+Holding a button gives exactly one `KEY_DOWN` and, on release, exactly one
+`KEY_UP` — no repeats. One key at a time is enough; a second contact while a
+key is held is treated as a thumb across two buttons or a ghost, and keeps the
+key that is already down rather than reporting a release that didn't happen.
+
+### Mapping the rest of the buttons
+
+Only 1, 2 and 3 are measured. The client maps the rest for you: press an
+unknown button with it running and the pair prints once, ready to paste into
+`config.yaml`.
+
+```text
+21:15:02.881 | KEYPAD | unmapped contact 5 <-> 26 — add it to keypad.mapping
+```
+
+```yaml
+  mapping:
+    "4": [5, 26]
+```
+
+Pairs are unordered — `[5, 26]` and `[26, 5]` are the same button — because
+which end of the contact gets driven low is an accident of scan order.
+`tools/keypad_mapper.py` does the same job standalone, on a phone whose
+conductors haven't been sorted onto pins yet.
 
 ## Run at boot
 
@@ -177,3 +244,11 @@ with `--system-site-packages`, and check the account is in the `gpio` group
 
 **The hook fires twice per lift** — cradle switch bounce beyond the 50 ms
 `debounce_ms`. Raise it; the cost is only how fast a hang-up registers.
+
+**A button reports the wrong key, or nothing** — check the pair in
+`keypad.mapping` against what the log prints as an unmapped contact. If a press
+prints nothing at all, the two conductors for that key aren't both in
+`keypad.pins`.
+
+**`KEYPAD` events repeat while a button is held** — raise `keypad.debounce_ms`.
+30 ms suits the Zodiac's contacts; older keypads chatter for longer.

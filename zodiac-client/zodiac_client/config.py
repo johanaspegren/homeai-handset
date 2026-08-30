@@ -32,6 +32,10 @@ DEFAULTS = {
     },
     "hook": {"source": "stdin", "pin": 17, "invert": False,
              "debounce_ms": 50, "pull_up": True},
+    # Off by default: a Zodiac with nothing on the keypad conductors must not
+    # start driving GPIO lines low because it read a stale config.
+    "keypad": {"enabled": False, "pins": [], "mapping": {}, "chip": 0,
+               "debounce_ms": 30, "scan_hz": 70, "settle_us": 50},
     "logging": {"level": "INFO"},
 }
 

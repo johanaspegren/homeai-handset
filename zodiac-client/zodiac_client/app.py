@@ -18,6 +18,7 @@ from . import protocol
 from .audio import Earpiece, Microphone, check_devices
 from .config import frame_bytes, load
 from .gpio import make_hook
+from .keypad import make_keypad
 from .logging_config import setup as setup_logging
 
 log = logging.getLogger("zodiac")
@@ -45,6 +46,13 @@ class ZodiacClient:
 
     async def run(self) -> None:
         hook = make_hook(self.settings["hook"])
+        keypad = make_keypad(self.settings.get("keypad", {}))
+        # The keypad is watched independently of the hook rather than inside a
+        # call, because the buttons are part of the telephone and not part of a
+        # conversation: a press with the handset in the cradle is still a press,
+        # and whatever we eventually do with it may well be the reason someone
+        # walks over to the phone in the first place.
+        watch_keypad = asyncio.create_task(self._watch_keypad(keypad)) if keypad else None
         try:
             async for off_hook in hook.events():
                 _log("GPIO", "OFF_HOOK" if off_hook else "ON_HOOK")
@@ -54,7 +62,19 @@ class ZodiacClient:
                     await self._end_call()
         finally:
             await self._end_call()
+            if watch_keypad:
+                watch_keypad.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await watch_keypad
+                await keypad.close()
             await hook.close()
+
+    async def _watch_keypad(self, keypad) -> None:
+        """Nothing acts on the buttons yet — they are logged so the remaining
+        pairs can be measured and the mapping finished before anything starts
+        depending on it."""
+        async for event in keypad.events():
+            _log("KEYPAD", f"{event.type} {event.key}")
 
     async def _start_call(self) -> None:
         await self._end_call()

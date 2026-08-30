@@ -39,5 +39,26 @@ hook:
   debounce_ms: 50
   pull_up: true
 
+keypad:
+  # The original keypad, wired straight to GPIO as a passive switch matrix:
+  # seven conductors, no diodes and no series resistors between them and the
+  # Pi. keypad.py scans it one line at a time and never drives two at once —
+  # read the header there before changing any of this.
+  enabled: true
+  pins: [27, 22, 5, 6, 13, 19, 26]
+  debounce_ms: 30
+  # ~70 full sweeps a second: fast enough that a firm press is never missed,
+  # slow enough to stay invisible on the Pi's CPU.
+  scan_hz: 70
+
+  # Measured with tools/keypad_mapper.py, one button at a time. Pins are an
+  # unordered pair — the contact doesn't know which end got driven low. Press
+  # an unmapped button with the client running and the log prints the pair to
+  # paste in here.
+  mapping:
+    "1": [22, 26]
+    "2": [13, 26]
+    "3": [6, 26]
+
 logging:
   level: INFO
