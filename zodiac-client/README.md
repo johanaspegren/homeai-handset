@@ -91,6 +91,8 @@ homeai box. If the echo is wrong too, it's the wiring, the card or ALSA.
 
 | Key | Default | Notes |
 |---|---|---|
+| `terminal.id` | `zodiac-01` | this telephone's name in the service's log trail |
+| `terminal.place` | `workshop` | the room it stands in — see below |
 | `homeai.websocket_url` | `ws://homeai.local:8400/zodiac` | use the hostname; homeai's DHCP lease moves |
 | `audio.capture_device` / `playback_device` | `plughw:CARD=Device,DEV=0` | from `arecord -L`; overridden per Pi |
 | `audio.capture_rate` | `16000` | what Whisper wants |
@@ -101,6 +103,7 @@ homeai box. If the echo is wrong too, it's the wiring, the card or ALSA.
 | `hook.pin` | `17` | BCM number of the cradle switch |
 | `hook.invert` | `true` | the Zodiac closes its switch when the handset is *lifted* |
 | `keypad.enabled` | `true` | off by default in code; on in the shipped config |
+| `keypad.source` | `gpio` | `gpio` \| `stdin` — stdin types presses when the phone is on a bench |
 | `keypad.pins` | `[27, 22, 5, 6, 13, 19, 26]` | the seven conductors, BCM numbers |
 | `keypad.mapping` | `{"1": [22, 26], ...}` | measured pairs, unordered |
 | `keypad.debounce_ms` | `30` | how long a reading must hold still to be believed |
@@ -108,6 +111,53 @@ homeai box. If the echo is wrong too, it's the wiring, the card or ALSA.
 
 `HOMEAI_WS_URL` overrides the URL from the environment, for debugging on a
 strange network.
+
+### `terminal.place` — the room
+
+Sent to the server at the start of every call, alongside the terminal id. It is
+what lets an action land in the right place: "play something" asked down this
+telephone should start on the speakers you are standing next to, not in the
+earpiece and not on whatever device Spotify last woke up on.
+
+The Pi does not act on it and does not know what is in the room. It says
+`workshop`; the server's `places.yaml` is what turns that into a particular
+speaker or camera. That division is deliberate and worth keeping — it means a
+renamed speaker never involves logging into a Raspberry Pi inside a telephone,
+and a second Zodiac in the kitchen is this one line plus an entry on the server.
+
+## One socket, held open
+
+The client connects when it starts and stays connected; `off_hook` and `on_hook`
+are frames on that socket rather than the thing that opens and closes it. The
+keypad is part of the telephone, not part of a conversation — a press with the
+handset in the cradle is still a press, and both things the buttons are for
+(music on, the room opened up) happen with the handset down.
+
+What does *not* outlive the handset is the microphone. `arecord` starts when the
+handset is lifted and is killed when it goes down, so between "down" and
+"lifted" there is no recording process on the Pi at all — see below. A live
+socket must never soften that into a mute, and `tests/test_client_app.py` fails
+if it ever does.
+
+A press while the socket is down is logged and dropped rather than queued: music
+starting five minutes later, once the network is back and nobody is standing
+there, is worse than nothing happening.
+
+## Testing the buttons without the phone
+
+The keypad is seven bare conductors on GPIO, so with the Zodiac anywhere but on
+the bench there is nothing to press. Two stand-ins:
+
+```yaml
+keypad:
+  source: stdin      # type 5 and ENTER -> KEY_DOWN 5, KEY_UP 5
+```
+
+and, from the homeai box, a press straight at the service with no client at all:
+
+```bash
+.venv/bin/python tools/press_key.py 5
+```
 
 ## The hook switch
 

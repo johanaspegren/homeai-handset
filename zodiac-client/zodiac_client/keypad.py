@@ -31,6 +31,7 @@ protocol to the service is unchanged.
 
 import asyncio
 import logging
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -243,15 +244,53 @@ class Keypad:
         self.matrix.close()
 
 
-def make_keypad(config: dict) -> Keypad | None:
+class StdinKeypad:
+    """The keypad, typed instead of pressed — the hook's `stdin` source, for the
+    buttons.
+
+    The Zodiac's keypad is seven bare conductors on GPIO, so without the phone
+    on the desk there is no way to press anything at all, and the whole path
+    from a button to music playing is untestable. This makes it testable
+    anywhere: type `5` and ENTER, get KEY_DOWN 5 followed by KEY_UP 5.
+
+    A typed line is instantaneous, so the press and the release arrive together.
+    Nothing downstream minds — the service acts on KEY_DOWN — but a hold cannot
+    be simulated here, and anything that eventually cares about how long a
+    button was held will need the real keypad to test it.
+    """
+
+    def __init__(self) -> None:
+        self._stop = False
+
+    async def events(self):
+        loop = asyncio.get_running_loop()
+        log.info("keypad on stdin — type digits and ENTER (e.g. 5, then *)")
+        while not self._stop:
+            line = await loop.run_in_executor(None, sys.stdin.readline)
+            if not line:            # stdin closed: no more presses, ever
+                return
+            for char in line.strip():
+                yield KeyEvent(KEY_DOWN, char)
+                yield KeyEvent(KEY_UP, char)
+
+    async def close(self) -> None:
+        self._stop = True
+
+
+def make_keypad(config: dict) -> Keypad | StdinKeypad | None:
     """Build the keypad from config, or None if it isn't wired on this Zodiac.
 
     Returning None rather than a no-op stand-in is deliberate: unlike the hook,
     which the phone cannot work without, a keypad-less Zodiac is a complete
     telephone. Nothing downstream should have to pretend otherwise.
+
+    `source` mirrors the hook's: `gpio` is the real matrix, `stdin` is the
+    keyboard standing in for it while the phone is in pieces on a bench.
     """
     if not config or not config.get("enabled"):
         return None
+    if config.get("source", "gpio") == "stdin":
+        return StdinKeypad()
     pins = [int(p) for p in config.get("pins", [])]
     if len(set(pins)) < 2:
         log.warning("keypad enabled but %d pins configured — disabled", len(pins))

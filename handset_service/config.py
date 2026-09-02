@@ -24,6 +24,13 @@ PORT = int(os.getenv("HANDSET_PORT", "8400"))
 HOMEAI_CHAT_URL = os.getenv("HOMEAI_CHAT_URL", "http://localhost:8000/chat")
 HANDSET_USER = os.getenv("HANDSET_USER", "johan")
 HANDSET_SOURCE = os.getenv("HANDSET_SOURCE", "handset")
+# Where the telephone is. The Pi announces this in its off_hook frame, because
+# a second Zodiac in another room is the same code with a different config; this
+# is only the fallback for a client too old to send one. The server turns a
+# place into actual speakers and lights — neither the Pi nor this service ever
+# learns their names, so "play something" down the phone can mean the workshop
+# speakers rather than the earpiece pressed against your ear.
+HANDSET_PLACE = os.getenv("HANDSET_PLACE", "workshop")
 CHAT_TIMEOUT_S = float(os.getenv("HANDSET_CHAT_TIMEOUT_S", "60"))
 
 # --- the other Kiri --------------------------------------------------------
@@ -54,6 +61,36 @@ VOICE_PIDFILE = Path(
 HANDSFREE_KEY = os.getenv("HANDSET_HANDSFREE_KEY", "*").strip()
 # Starting homeai-voice loads Whisper onto the GPU — allow for it.
 HANDSFREE_TIMEOUT_S = float(os.getenv("HANDSET_HANDSFREE_TIMEOUT_S", "45"))
+
+# --- the keypad ------------------------------------------------------------
+# What the Zodiac's buttons say. Each binding is a key and the words it puts to
+# Kiri, exactly as if they had been spoken down the line: the button is a stored
+# phrase, not a command, so a press goes through /chat like everything else and
+# gets the vault, the persona and the `<<run:>>` markers for free. That is why
+# "put some music on" reaches Spotify without this service ever having heard of
+# Spotify — and why it lands on the speakers in the room the phone is in.
+#
+# Separated by `|` because the phrases contain commas:
+#     HANDSET_KEYS="5=put some music on|6=next track"
+#
+# The default set follows the phone's own shape rather than a menu nobody can
+# remember: the middle row is the transport you'd expect on any music player,
+# 0 stops it, and `*` (HANDSET_HANDSFREE_KEY, handled as an action rather than a
+# phrase) opens the room up into what is effectively a conference call.
+KEY_PHRASES = {
+    key.strip(): phrase.strip()
+    for key, _, phrase in (
+        binding.partition("=")
+        for binding in os.getenv(
+            "HANDSET_KEYS",
+            "4=previous track"
+            "|5=put some music on"
+            "|6=next track"
+            "|0=pause the music",
+        ).split("|")
+    )
+    if key.strip() and phrase.strip()
+}
 
 # --- the status ring (homeai-halo) -----------------------------------------
 # Voice used to drive Kiri's LED ring; it doesn't run by default now, so the

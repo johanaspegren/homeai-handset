@@ -35,6 +35,32 @@ really does check the mower down the phone), the journal, reminders.
 Requests arrive with `source="handset"`, which earns them a spoken, telephone-
 brief system prompt on the server side.
 
+### Who, how, which and where
+
+Four fields travel with every request, and they are four rather than one
+because they vary independently — the same person in the same room reaches Kiri
+through the telephone or the workshop mic and wants the same speakers but a
+different reply style, and two telephones would be one channel in two rooms:
+
+| field | question | on the handset |
+|---|---|---|
+| `user` | who is asking | `HANDSET_USER` — a telephone can't tell who lifted it |
+| `source` | how they're asking | `handset`: the reply will be spoken down a line |
+| `terminal` | which thing | `zodiac-01`, the same id the log trail uses |
+| `place` | where "here" is | `workshop`, from the Pi's `config.yaml` |
+
+Only the last matters to *actions* rather than answers. "Play something" has to
+resolve to a speaker, and the only honest answer to "which one?" is "the one in
+the room the caller is standing in" — which is emphatically not the earpiece
+pressed against their ear. So the phone names a room and stops there; the
+server's `places.yaml` is the single thing that knows a room contains a
+particular Spotify Connect device, and a speaker renamed is one line changed on
+the server rather than an edit to a Raspberry Pi inside a telephone.
+
+A place is set by the adapter's configuration and never by the text of a
+message or by the model. Discord sends no place at all, and that is a real
+answer rather than a missing one: no room, no guess — Kiri asks which one.
+
 One deliberate deviation from the original spec: conversation state is **not**
 wiped when you hang up. The server keeps a short rolling history per user that
 voice and Discord share, so a call can pick up where the workshop left off. The
@@ -79,8 +105,13 @@ Milestones 1, 3, 4 and 6 of the spec, with 5 stood in for:
   cradle plunger, hence `hook.invert: true`. A systemd unit for running the
   client at boot ships in `zodiac-client/systemd/`.
 
-Not yet: keypad (unmapped — see `tools/keypad_mapper.py`), LEDs (logged, not
-lit), the ringer, barge-in, and the earpiece amplifier.
+- **The keypad** — all twelve buttons measured and mapped, and they work with
+  the handset in its cradle: the socket comes up when the Pi boots and stays up,
+  so `off_hook` is a frame on it rather than the thing that opens it. See
+  "The buttons" below.
+
+Not yet: LEDs (logged, not lit), the ringer, barge-in, and the earpiece
+amplifier.
 
 ## Prerequisites
 
@@ -141,10 +172,12 @@ installed on the Pi, not here.
 | `HANDSET_PORT` | `8400` | WebSocket port (`/zodiac`, `/zodiac/echo`) |
 | `HOMEAI_CHAT_URL` | `http://localhost:8000/chat` | the brain |
 | `HANDSET_USER` | `johan` | whose conversation history this is |
+| `HANDSET_PLACE` | `workshop` | fallback room, if the Pi's `config.yaml` doesn't name one |
 | `HANDSET_GREETING` | four lines | spoken as you pick up; `\|`-separated, one per call |
 | `HANDSET_GREETING_DELAY_MS` | `800` | time to get the handset to your ear before she starts |
 | `HANDSET_MUTES_VOICE` | `1` | hold the workshop's open mic for the call, when it's running at all |
-| `HANDSET_HANDSFREE_KEY` | `*` | keypad button that toggles the workshop mic (keypad not mapped yet) |
+| `HANDSET_HANDSFREE_KEY` | `*` | keypad button that opens the room up (hands free) |
+| `HANDSET_KEYS` | four music buttons | what the other buttons say to Kiri; `key=phrase`, `\|`-separated |
 | `HOMEAI_SH` | `../homeai.sh` | the stack script hands-free uses to start/stop voice |
 | `WHISPER_MODEL` / `WHISPER_DEVICE` | `small.en` / `cuda` | speech to text |
 | `PIPER_VOICE` | `en_US-lessac-medium` | Kiri's voice (shared with homeai-voice) |
@@ -152,6 +185,48 @@ installed on the Pi, not here.
 | `VAD_HANGOVER_MS` | `700` | silence that ends your turn — the main latency/patience dial |
 | `VAD_PREROLL_MS` | `300` | audio kept from before you started speaking |
 | `VAD_MIN_SPEECH_MS` | `250` | shorter than this is a door bang, not a turn |
+
+## The buttons
+
+The Zodiac's twelve keys are wired straight to GPIO and mapped in the client's
+`config.yaml`. A press is sent up as a `key` frame and what it *means* is
+decided here, on the homeai box — the Pi knows button 5 was pressed and nothing
+about music.
+
+| key | does |
+|---|---|
+| `4` `5` `6` | previous / put some music on / next — the middle row as transport controls |
+| `0` | pause the music |
+| `*` | hands free: open the room up into what is effectively a conference call |
+
+Everything except `*` is a **stored phrase, not a command**. Pressing `5` puts
+the words "put some music on" to Kiri through `/chat`, exactly as if they had
+been spoken down the line — so the button inherits her persona, the vault, and
+every `<<run:>>` tool she already has, and this service reaches Spotify without
+ever having heard of Spotify. Rebinding is a line of `.env`, not a code change:
+
+```bash
+HANDSET_KEYS="5=put some music on|6=next track|1=what's the mower up to?"
+```
+
+The cost is honest: a press goes through a language model, so it's a second or
+so rather than instant, and she has to pick the right marker. The alternative —
+this service calling the Spotify tool itself — would be quicker and would make
+the handset a second brain.
+
+**They work with the handset down**, which is the point: putting music on is not
+something you pick up a telephone to do. Off-hook, a press becomes the caller's
+turn and the answer arrives in the earpiece; on-hook, the action happens and the
+reply is logged, because there is no ear to speak into. The microphone is
+unaffected either way — `arecord` still exists only between "lifted" and
+"replaced".
+
+Press one without the telephone:
+
+```bash
+.venv/bin/python tools/press_key.py 5      # music on, in the workshop
+.venv/bin/python tools/press_key.py '*'    # hands free
+```
 
 ## The telephone is the default way in
 
@@ -214,10 +289,11 @@ One WebSocket per call, carrying JSON control frames and raw binary PCM.
 
 | client → server | server → client |
 |---|---|
-| `off_hook` `{terminal_id}` | `call_started` `{audio:{rate,channels,encoding}}` |
-| binary PCM (16 kHz mono s16le) | `listening` |
-| `end_of_speech` (optional) | `transcript` `{text}` |
-| `key` `{key}` | `assistant_speaking` / binary PCM / `assistant_finished` |
+| `hello` `{terminal_id, place}` | `call_started` `{audio:{rate,channels,encoding}}` |
+| `off_hook` `{terminal_id, place}` | `listening` |
+| binary PCM (16 kHz mono s16le) | `transcript` `{text}` |
+| `end_of_speech` (optional) | |
+| `key` `{key}` — any time, call or not | `assistant_speaking` / binary PCM / `assistant_finished` |
 | `mute` `{active}` | `mic` `{active}` — half-duplex gate |
 | `on_hook` | `led` `{state}`, `error` `{message}` |
 

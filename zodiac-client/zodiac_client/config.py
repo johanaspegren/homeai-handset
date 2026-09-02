@@ -15,7 +15,10 @@ import yaml
 log = logging.getLogger("zodiac.config")
 
 DEFAULTS = {
-    "terminal": {"id": "zodiac-01", "name": "Zodiac Sigma 300"},
+    # `place` is the room this telephone is in, sent to the server at the start
+    # of every call. It is told, not sensed — like the ALSA device names above
+    # it — and the server is what turns it into speakers, lights or a camera.
+    "terminal": {"id": "zodiac-01", "name": "Zodiac Sigma 300", "place": "workshop"},
     "homeai": {
         "websocket_url": "ws://homeai.local:8400/zodiac",
         "reconnect_delay_s": 1.0,
@@ -34,8 +37,8 @@ DEFAULTS = {
              "debounce_ms": 50, "pull_up": True},
     # Off by default: a Zodiac with nothing on the keypad conductors must not
     # start driving GPIO lines low because it read a stale config.
-    "keypad": {"enabled": False, "pins": [], "mapping": {}, "chip": 0,
-               "debounce_ms": 30, "scan_hz": 70, "settle_us": 50},
+    "keypad": {"enabled": False, "source": "gpio", "pins": [], "mapping": {},
+               "chip": 0, "debounce_ms": 30, "scan_hz": 70, "settle_us": 50},
     "logging": {"level": "INFO"},
 }
 

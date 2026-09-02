@@ -63,11 +63,27 @@ directly — persona, the Obsidian vault, `<<note:>>`/`<<remind:>>`/`<<run:>>`
 markers, journal and history all live behind `/chat`, and the phone gets them
 for free by staying a thin adapter.
 
+Requests carry four fields, deliberately kept apart: `user` (who), `source`
+(how — the modality that shapes the reply), `terminal` (which thing, for the log
+trail) and `place` (the room). Only `place` matters to *actions*: "play
+something" has to resolve to a speaker, and it must be the one in the caller's
+room rather than the earpiece against their ear. The phone names a room and
+stops there — `homeai-server/places.yaml` is the only file that knows a room
+contains a particular Spotify device. A place comes from an adapter's config,
+never from message text and never from the model.
+
 **All intelligence is server-side.** The Pi owns hardware and transport only —
 it doesn't know what VAD or a language model is. Turn taking (silero-VAD) runs
 in `handset_service/vad.py` precisely so the client stays dumb.
 
-One call = one WebSocket carrying JSON control frames and raw binary PCM.
+One socket per phone, carrying JSON control frames and raw binary PCM. The
+client holds it from boot, so `off_hook`/`on_hook` are frames on it rather than
+connect/disconnect: the keypad has to work with the handset in its cradle, which
+is where it is when someone walks past and wants music on. `keys.py` owns what a
+button means (a stored phrase put to `/chat`, or hands free), in and out of a
+call — the microphone still exists only between "lifted" and "replaced", and
+that is a property `tests/test_client_app.py` guards.
+
 `session.py` is the state machine (greet → listen → transcribe → ask Kiri →
 speak, repeat), with the reply pipeline as a cancellable `asyncio.Task` so
 hanging up stops Kiri mid-sentence. `websocket.py` owns the socket and

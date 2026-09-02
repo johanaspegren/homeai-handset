@@ -11,10 +11,11 @@ a socket, and the STT/LLM/TTS callables are injected so tests don't need models.
 """
 
 import asyncio
+import functools
 import logging
 import random
 
-from . import config, handsfree, llm, protocol, stt, tts
+from . import config, handsfree, keys, llm, protocol, stt, tts
 from .logging_config import CallLog
 from .ring import ring
 from .vad import Segmenter, Vad
@@ -47,6 +48,7 @@ class Call:
         send_audio,
         *,
         terminal_id: str = "zodiac",
+        place: str = None,
         transcribe=None,
         chat=None,
         synthesize=None,
@@ -59,10 +61,17 @@ class Call:
         self._send_json = send_json
         self._send_audio = send_audio
         self.terminal_id = terminal_id
+        self.place = place or config.HANDSET_PLACE
         self.log = CallLog(terminal_id)
 
         self._transcribe = transcribe or stt.transcribe_pcm
-        self._chat = chat or llm.stream_reply
+        # Who and where are bound once, here, rather than passed down at every
+        # turn: they belong to the call, not to the question. It also keeps
+        # `_chat(text)` a one-argument callable, which is what lets the tests
+        # inject a fake Kiri without knowing any of this exists.
+        self._chat = chat or functools.partial(
+            llm.stream_reply, terminal=terminal_id, place=self.place,
+        )
         self._synthesize = synthesize or tts.synthesize
         self._sample_rate = sample_rate or tts.sample_rate
         self._greeting = pick_greeting() if greeting is None else greeting
@@ -165,14 +174,15 @@ class Call:
             self._segmenter.reset()
             self.log.event("MUTE", "on" if self._muted else "off")
         elif kind == protocol.KEY:
-            key = str(message.get("key"))
-            self.log.event("KEY", key)
-            if config.HANDSFREE_KEY and key == config.HANDSFREE_KEY:
-                await self._toggle_hands_free()
+            # Deliberately not handled here: what a button means is the same
+            # question whether or not anyone is holding the handset, so it is
+            # answered in one place. See keys.py.
+            await keys.press(str(message.get("key")), call=self,
+                             terminal=self.terminal_id, place=self.place)
         elif kind == protocol.PING:
             await self._send_json(protocol.message(protocol.PONG))
 
-    async def _toggle_hands_free(self) -> None:
+    async def toggle_hands_free(self) -> None:
         """The phone's hands-free button: bring the workshop mic and speakers
         up (or put them away). Slow — homeai-voice loads Whisper — so say so
         rather than leaving a silent handset."""
@@ -197,6 +207,45 @@ class Call:
         self.log.event("AUDIO", "speech started")
 
     # --- the turn ----------------------------------------------------------
+
+    async def say(self, phrase: str) -> None:
+        """Put words to Kiri as if the caller had spoken them.
+
+        A button press during a call is the caller's turn, taken with a stored
+        sentence instead of a sentence they said. It goes through the same
+        pipeline for the same reason the greeting does not: the answer has to
+        arrive in the earpiece, cancellable, half-duplex, with the mic shut
+        while she talks. Anything else would be a second, subtly different way
+        of having a turn.
+        """
+        if not self.active:
+            return
+        if self._turn is not None and not self._turn.done():
+            # She is already answering something. Two turns at once down one
+            # earpiece is nobody's idea of a telephone call.
+            self.log.event("KEY", "ignored — already answering")
+            return
+        self._accepting = False
+        await self._send_json(protocol.message(protocol.MIC, active=False))
+        self.log.mark("speech_end")  # the press is the moment the turn begins
+        self._turn = asyncio.create_task(self._run_spoken_turn(phrase))
+
+    async def _run_spoken_turn(self, phrase: str) -> None:
+        """A turn whose words are already known — no microphone, no Whisper."""
+        try:
+            await self._led(protocol.LED_THINKING)
+            ring.set("thinking")
+            await self._send_json(protocol.message(protocol.TRANSCRIPT, text=phrase))
+            await self._speak_reply(phrase)
+        except asyncio.CancelledError:
+            self.log.event("TURN", "cancelled (handset replaced)")
+            raise
+        except Exception as exc:
+            logging.exception("turn failed")
+            await self._error(str(exc))
+        finally:
+            if self.active:
+                await self._listen()
 
     async def _start_turn(self, pcm: bytes) -> None:
         self.log.mark("speech_end")

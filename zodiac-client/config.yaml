@@ -1,6 +1,11 @@
 terminal:
   id: zodiac-01
   name: Zodiac Sigma 300
+  # The room. Sent with every call so an action ("play something") lands on the
+  # speakers you are standing next to rather than wherever Spotify last played.
+  # The names of those speakers live on the server, in places.yaml — a Zodiac in
+  # another room changes this line and nothing else.
+  place: workshop
 
 homeai:
   # The handset service on the homeai box. Use the hostname, not the DHCP
@@ -40,6 +45,11 @@ hook:
   pull_up: true
 
 keypad:
+  # gpio:  the real keypad on `pins` (below)
+  # stdin: type a digit and ENTER — the keyboard standing in for the keypad
+  #        while the phone is in pieces, exactly as hook.source: stdin does
+  source: gpio
+
   # The original keypad, wired straight to GPIO as a passive switch matrix:
   # seven conductors, no diodes and no series resistors between them and the
   # Pi. keypad.py scans it one line at a time and never drives two at once —

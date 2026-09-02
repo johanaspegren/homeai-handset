@@ -17,7 +17,19 @@ service package installed. Keep the two files identical.
 PROTOCOL_VERSION = 1
 
 # --- client -> server ------------------------------------------------------
-OFF_HOOK = "off_hook"            # {"terminal_id": "zodiac-01"} — call begins
+HELLO = "hello"                  # {"terminal_id": "zodiac-01", "place": "workshop"}
+                                 # — the phone is on the network. Sent once per
+                                 # connection, before and regardless of any
+                                 # call: the socket now outlives the handset so
+                                 # the keypad works with it in the cradle, which
+                                 # is where it is when you walk past and want
+                                 # music. off_hook is a frame on this same
+                                 # socket, not a connection of its own.
+OFF_HOOK = "off_hook"            # {"terminal_id": "zodiac-01", "place": "workshop"}
+                                 # — call begins. `place` is the room the phone
+                                 # stands in; the server resolves it to real
+                                 # speakers and lights, so the client never
+                                 # learns their names.
 ON_HOOK = "on_hook"              # call ends, cancel everything in flight
 END_OF_SPEECH = "end_of_speech"  # optional: client-side VAD/PTT boundary
 KEY = "key"                      # {"key": "7"}

@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
-from . import config, handsfree, protocol, stt, tts
+from . import config, handsfree, keys, protocol, stt, tts
 from .ring import ring
 from .echo import router as echo_router
 from .logging_config import setup as setup_logging
@@ -106,6 +106,11 @@ async def zodiac(websocket: WebSocket) -> None:
     await websocket.accept()
     transport = _Transport(websocket)
     call: Call | None = None
+    # Known before any call: the client says hello when it connects, and keeps
+    # saying which phone it is in every off_hook. Defaults cover a client too
+    # old to introduce itself.
+    terminal = "zodiac"
+    place = config.HANDSET_PLACE
     try:
         while True:
             event = await websocket.receive()
@@ -126,18 +131,40 @@ async def zodiac(websocket: WebSocket) -> None:
 
             kind = message.get("type")
             if kind == protocol.OFF_HOOK:
+                terminal = message.get("terminal_id", "zodiac")
+                place = message.get("place") or config.HANDSET_PLACE
                 if call is not None:
                     await call.hang_up()
                 call = Call(
                     transport.send_json,
                     transport.send_audio,
-                    terminal_id=message.get("terminal_id", "zodiac"),
+                    terminal_id=terminal,
+                    # The telephone says which room it is in; a client too old
+                    # to say falls back to config rather than to nothing, so an
+                    # action never has to guess which speakers "here" means.
+                    place=place,
                 )
                 await call.start()
             elif call is not None:
                 await call.on_control(message)
                 if kind == protocol.ON_HOOK:
                     call = None
+            elif kind == protocol.HELLO:
+                # The phone announcing itself, not a call. The client keeps this
+                # socket up from boot so the buttons work with the handset in the
+                # cradle — which is when they are most useful, since putting
+                # music on is not something you pick up a telephone to do.
+                terminal = message.get("terminal_id", terminal)
+                place = message.get("place") or place
+                log.info("phone connected | place=%s", place,
+                         extra={"stage": "NET", "terminal": terminal})
+            elif kind == protocol.KEY:
+                # A press with the handset down. No call to decorate, so the
+                # action happens and the reply is logged rather than spoken.
+                await keys.press(str(message.get("key")),
+                                 terminal=terminal, place=place)
+            elif kind == protocol.PING:
+                await transport.send_json(protocol.message(protocol.PONG))
             else:
                 log.warning("%s before off_hook — ignored", kind,
                             extra={"stage": "NET", "terminal": "-"})

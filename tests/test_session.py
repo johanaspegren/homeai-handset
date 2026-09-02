@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest import mock
 
-from handset_service import config, protocol, session
+from handset_service import config, llm, protocol, session
 from handset_service.session import Call
 from tests.test_vad import FRAME, ScriptedVad
 from handset_service.vad import Segmenter
@@ -308,6 +308,79 @@ class CallTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(transport.of(protocol.ERROR))
         # ...and the call carries on rather than wedging.
         self.assertEqual(transport.types()[-1], protocol.LISTENING)
+
+
+class PlaceTests(unittest.IsolatedAsyncioTestCase):
+    """The telephone says where it is, and stops there.
+
+    The Pi announces a room; this service passes it on without ever learning
+    what is in it. These tests pin the seam: the field survives the trip to
+    /chat, and nothing on this side resolves it to a speaker."""
+
+    def test_identity_is_bound_to_the_real_chat_callable(self):
+        transport = FakeTransport()
+        call = Call(transport.send_json, transport.send_audio,
+                    terminal_id="zodiac-01", place="workshop", greeting="")
+        self.assertEqual(call._chat.keywords,
+                         {"terminal": "zodiac-01", "place": "workshop"})
+
+    def test_a_client_that_names_no_room_falls_back_to_config(self):
+        transport = FakeTransport()
+        call = Call(transport.send_json, transport.send_audio,
+                    terminal_id="zodiac-01", greeting="")
+        self.assertEqual(call.place, config.HANDSET_PLACE)
+
+    async def test_the_room_reaches_the_post_body(self):
+        posted = {}
+
+        class FakeResponse:
+            def raise_for_status(self): pass
+            async def aiter_text(self):
+                yield "hello"
+
+        class FakeStream:
+            def __init__(self, **kwargs): posted.update(kwargs)
+            async def __aenter__(self): return FakeResponse()
+            async def __aexit__(self, *a): return False
+
+        class FakeClient:
+            def __init__(self, **kwargs): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            def stream(self, method, url, **kwargs): return FakeStream(**kwargs)
+
+        with mock.patch("handset_service.llm.httpx.AsyncClient", FakeClient):
+            async for _ in llm.stream_reply("hello", terminal="zodiac-01",
+                                            place="workshop"):
+                pass
+        body = posted["json"]
+        self.assertEqual(body["terminal"], "zodiac-01")
+        self.assertEqual(body["place"], "workshop")
+        self.assertEqual(body["source"], "handset")
+
+    def test_nothing_here_knows_what_is_in_a_room(self):
+        """The whole point of the split: a speaker's name must never appear in
+        service *code*. Prose may discuss Spotify — keys.py explains at length
+        why it doesn't call it — so this reads the parsed syntax tree with
+        docstrings removed, and comments never survive parsing at all. If a
+        device name shows up here, the adapter has started owning hardware it
+        cannot see."""
+        import ast
+        import pathlib
+        service = pathlib.Path(session.__file__).parent
+        for module in sorted(service.glob("*.py")):
+            tree = ast.parse(module.read_text())
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Module, ast.ClassDef,
+                                     ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if (node.body and isinstance(node.body[0], ast.Expr)
+                            and isinstance(node.body[0].value, ast.Constant)
+                            and isinstance(node.body[0].value.value, str)):
+                        node.body.pop(0)
+                        if not node.body:
+                            node.body.append(ast.Pass())
+            code = ast.unparse(ast.fix_missing_locations(tree)).lower()
+            self.assertNotIn("spotify", code, module.name)
 
 
 if __name__ == "__main__":
