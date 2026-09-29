@@ -47,7 +47,8 @@ Measured DC resistance:
 ~140 Ω
 ```
 
-It has been successfully driven from a cheap C-Media / Plexgear USB sound card.
+It has been successfully driven from a cheap C-Media / Plexgear USB sound card,
+into its **green** jack (speaker out). Polarity does not matter (speaker coil).
 
 Volume is currently somewhat low, but speech is clearly intelligible.
 
@@ -63,7 +64,21 @@ GREEN / WHITE
 
 Inside the handset, these wires pass through the physical mute switch and then become red/black at the microphone capsule.
 
-The original microphone has been successfully captured through the USB sound card.
+The original microphone has been successfully captured through the USB sound
+card, via its **yellow** jack (this dongle's mic input — not pink as on PC
+motherboards). Note the physical mute switch sits in the green/white pair: an
+engaged mute records pure silence and looks exactly like a wiring fault.
+
+Field diagnostics that proved useful (2026-09-29, hook-wire + wiring repair):
+
+- `pinctrl get 17` on the Pi reads the hook line without claiming it — it must
+  toggle `hi`/`lo` with the cradle; stuck at `hi` = broken hook wire (pull-up
+  makes a dead circuit read as permanently on-hook).
+- "Device or resource busy" on arecord/aplay/speaker-test = the handset is
+  off-hook (client holds the codec) or a stale `aplay` survived — `fuser -v
+  /dev/snd/pcm*`, kill the holder.
+- Healthy mic level: peak ~20–25% of full scale, RMS ~700 at normal speech.
+  Peak ~1% / RMS <100 = silence: check mute switch, then wiring.
 
 No additional microphone bias/preamp circuitry has been required.
 
